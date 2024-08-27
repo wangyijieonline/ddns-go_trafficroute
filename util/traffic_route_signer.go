@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
@@ -61,6 +60,7 @@ type SignRequest struct {
 	Authorization  string
 }
 
+/*
 // go http client
 var httpClient = &http.Client{
 	Timeout: time.Second * 60,
@@ -70,9 +70,10 @@ var httpClient = &http.Client{
 		IdleConnTimeout: time.Second * 15,
 	},
 }
+*/
 
 // 第三步：创建一个 DNS 的 API 请求函数。签名计算的过程包含在该函数中。
-func TrafficRouteSigner(method string, query map[string][]string, header map[string]string, ak string, sk string, action string, body []byte) ([]byte, error) {
+func TrafficRouteSigner(method string, query map[string][]string, header map[string]string, ak string, sk string, action string, body []byte) (*http.Request, error) {
 	// 第四步：在requestDNS中，创建一个 HTTP 请求实例。
 	// 创建 HTTP 请求实例。该实例会在后续用到。
 	request, _ := http.NewRequest(method, "https://"+Host+"/", bytes.NewReader(body))
@@ -148,13 +149,16 @@ func TrafficRouteSigner(method string, query map[string][]string, header map[str
 	request.Header.Set("X-Content-Sha256", signResult.XContentSha256)
 	request.Header.Set("Authorization", signResult.Authorization)
 
-	resp, err := httpClient.Do(request)
-	if err != nil {
-		return nil, err
-	}
-	body, err = ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	return body, nil
+	/*
+		resp, err := httpClient.Do(request)
+		if err != nil {
+			return nil, err
+		}
+
+		body, err = ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+	*/
+	return request, nil
 }
