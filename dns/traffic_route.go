@@ -184,6 +184,7 @@ func (tr *TrafficRoute) create(zoneID int, domain *config.Domain, recordType str
 	util.Log("enter create")
 	record := &TrafficRouteRecord{
 		ZID:   zoneID,
+		Host:  domain.GetSubDomain(),
 		Type:  recordType,
 		Value: ipAddr,
 		TTL:   tr.TTL,
