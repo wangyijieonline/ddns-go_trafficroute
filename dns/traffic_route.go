@@ -209,7 +209,6 @@ func (tr *TrafficRoute) create(zoneID int, domain *config.Domain, recordType str
 // update 修改记录
 // UpdateRecord https://www.volcengine.com/docs/6758/155106
 func (tr *TrafficRoute) modify(result TrafficRouteRecordsResp, zoneID int, domain *config.Domain, recordType string, ipAddr string) {
-	util.Log("enter modify")
 	for _, record := range result.Result.Records {
 		// 相同不修改
 		if record.Value == ipAddr {
