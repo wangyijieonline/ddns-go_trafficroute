@@ -2,7 +2,7 @@ package dns
 
 import (
 	"encoding/json"
-	"fmt"
+	"runtime"
 	"strconv"
 
 	"github.com/jeessy2/ddns-go/v6/config"
@@ -14,7 +14,6 @@ const (
 	trafficRouteVersion  = "2018-08-01"
 )
 
-// https://help.aliyun.com/document_detail/29776.html?spm=a2c4g.11186623.6.672.715a45caji9dMA
 // TrafficRoute trafficRoute
 type TrafficRoute struct {
 	DNS     config.DNS
@@ -81,7 +80,16 @@ type TrafficRouteRespMeta struct {
 	}
 }
 
+// 获取正在运行的函数名
+func runFuncName() string {
+	pc := make([]uintptr, 1)
+	runtime.Callers(2, pc)
+	f := runtime.FuncForPC(pc[0])
+	return f.Name()
+}
+
 func (tr *TrafficRoute) Init(dnsConf *config.DnsConfig, ipv4cache *util.IpCache, ipv6cache *util.IpCache) {
+	util.Log("enter Init")
 	tr.Domains.Ipv4Cache = ipv4cache
 	tr.Domains.Ipv6Cache = ipv6cache
 	tr.DNS = dnsConf.DNS
@@ -101,12 +109,14 @@ func (tr *TrafficRoute) Init(dnsConf *config.DnsConfig, ipv4cache *util.IpCache,
 
 // AddUpdateDomainRecords 添加或更新 IPv4/IPv6 记录
 func (tr *TrafficRoute) AddUpdateDomainRecords() config.Domains {
+	util.Log("enter AddUpdateDomainRecords")
 	tr.addUpdateDomainRecords("A")
 	tr.addUpdateDomainRecords("AAAA")
 	return tr.Domains
 }
 
 func (tr *TrafficRoute) addUpdateDomainRecords(recordType string) {
+	util.Log("enter addUpdateDomainRecords")
 	ipAddr, domains := tr.Domains.GetNewIpResult(recordType)
 
 	if ipAddr == "" {
@@ -168,6 +178,7 @@ func (tr *TrafficRoute) addUpdateDomainRecords(recordType string) {
 // create 添加记录
 // CreateRecord https://www.volcengine.com/docs/6758/155104
 func (tr *TrafficRoute) create(zoneID string, domain *config.Domain, recordType string, ipAddr string) {
+	util.Log("enter create")
 	record := &TrafficRouteRecord{
 		ZID:   zoneID,
 		Type:  recordType,
@@ -202,6 +213,7 @@ func (tr *TrafficRoute) create(zoneID string, domain *config.Domain, recordType 
 // update 修改记录
 // UpdateRecord https://www.volcengine.com/docs/6758/155106
 func (tr *TrafficRoute) modify(result TrafficRouteRecordsResp, zoneID string, domain *config.Domain, ipAddr string) {
+	util.Log("enter modify")
 	for _, record := range result.Result.Records {
 		// 相同不修改
 		if record.Value == ipAddr {
@@ -237,6 +249,7 @@ func (tr *TrafficRoute) modify(result TrafficRouteRecordsResp, zoneID string, do
 
 // getLine 获取记录线路，为空返回默认
 func (tr *TrafficRoute) getLine(domain *config.Domain) string {
+	util.Log("enter getLine")
 	if domain.GetCustomParams().Has("Line") {
 		return domain.GetCustomParams().Get("Line")
 	}
@@ -246,10 +259,12 @@ func (tr *TrafficRoute) getLine(domain *config.Domain) string {
 // List 获得域名记录列表
 // ListZones https://www.volcengine.com/docs/6758/155100
 func (tr *TrafficRoute) listZones(domain *config.Domain) (result TrafficRouteZonesResp, err error) {
+	record := TrafficRouteRecord{}
+
 	err = tr.request(
 		"GET",
 		"ListZones",
-		nil,
+		record,
 		&result,
 	)
 
@@ -258,20 +273,21 @@ func (tr *TrafficRoute) listZones(domain *config.Domain) (result TrafficRouteZon
 
 // request 统一请求接口
 func (tr *TrafficRoute) request(method string, action string, data interface{}, result interface{}) (err error) {
+	util.Log("enter request")
 	jsonStr := make([]byte, 0)
 	if data != nil {
 		jsonStr, _ = json.Marshal(data)
 	}
+	// util.Log("jsonStr:%s", jsonStr)
 
 	QueryParam := make(map[string][]string)
 	err = json.Unmarshal(jsonStr, &QueryParam)
 	if err != nil {
-		util.Log("Umarshal failed:", err)
-		return
+		util.Log("Umarshal failed:%s", err)
 	}
-	fmt.Println("QueryParam:", QueryParam)
+	util.Log("QueryParam:", QueryParam)
 	// updateZoneResult, err := requestDNS("POST", map[string][]string{}, map[string]string{}, secretId, secretKey, action, body)
-	req, err := util.TrafficRouteSigner(method, QueryParam, map[string]string{}, tr.DNS.ID, tr.DNS.Secret, action, jsonStr)
+	req, err := util.TrafficRouteSigner(method, map[string][]string{}, map[string]string{}, tr.DNS.ID, tr.DNS.Secret, action, []byte{})
 	if err != nil {
 		return err
 	}
