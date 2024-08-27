@@ -2,6 +2,7 @@ package dns
 
 import (
 	"encoding/json"
+	"net/http"
 	"runtime"
 	"strconv"
 
@@ -23,7 +24,7 @@ type TrafficRoute struct {
 
 // TrafficRouteRecord record
 type TrafficRouteRecord struct {
-	ZID      string `json:"ZID"`
+	ZID      int    `json:"ZID"`
 	RecordID string `json:"RecordID"` // 需要更新的解析记录的 ID
 	Host     string `json:"Host"`     // 主机记录，即子域名的域名前缀。
 	Line     string `json:"Line"`     // 解析记录对应的线路。CreatRecord 可选 Line
@@ -39,7 +40,7 @@ type TrafficRouteZonesResp struct {
 	Total  int
 	Result struct {
 		Zones []struct {
-			ZID         string
+			ZID         int
 			ZoneName    string
 			RecordCount int
 		}
@@ -124,8 +125,9 @@ func (tr *TrafficRoute) addUpdateDomainRecords(recordType string) {
 	}
 
 	for _, domain := range domains {
+		util.Log("IP: %s, 域名: %s", ipAddr, domain)
 		// 获取域名列表
-		zoneResult, err := tr.listZones(domain)
+		zoneResult, err := tr.listZones()
 
 		if err != nil {
 			util.Log("查询域名信息发生异常! %s", err)
@@ -133,7 +135,8 @@ func (tr *TrafficRoute) addUpdateDomainRecords(recordType string) {
 			return
 		}
 
-		if zoneResult.Total == 0 {
+		util.Log("zoneResult.Total:%d", zoneResult.Result.Total)
+		if zoneResult.Result.Total == 0 {
 			util.Log("在DNS服务商中未找到根域名: %s", domain.DomainName)
 			domain.UpdateStatus = config.UpdatedFailed
 			return
@@ -142,10 +145,10 @@ func (tr *TrafficRoute) addUpdateDomainRecords(recordType string) {
 		zoneID := zoneResult.Result.Zones[0].ZID
 
 		var recordResult TrafficRouteRecordsResp
-		// getDomains
-		record := TrafficRouteRecord{
+		record := &TrafficRouteRecord{
 			ZID: zoneID,
 		}
+
 		err = tr.request(
 			"GET",
 			"ListRecords",
@@ -177,12 +180,11 @@ func (tr *TrafficRoute) addUpdateDomainRecords(recordType string) {
 
 // create 添加记录
 // CreateRecord https://www.volcengine.com/docs/6758/155104
-func (tr *TrafficRoute) create(zoneID string, domain *config.Domain, recordType string, ipAddr string) {
+func (tr *TrafficRoute) create(zoneID int, domain *config.Domain, recordType string, ipAddr string) {
 	util.Log("enter create")
 	record := &TrafficRouteRecord{
 		ZID:   zoneID,
 		Type:  recordType,
-		Line:  tr.getLine(domain),
 		Value: ipAddr,
 		TTL:   tr.TTL,
 	}
@@ -212,7 +214,7 @@ func (tr *TrafficRoute) create(zoneID string, domain *config.Domain, recordType 
 
 // update 修改记录
 // UpdateRecord https://www.volcengine.com/docs/6758/155106
-func (tr *TrafficRoute) modify(result TrafficRouteRecordsResp, zoneID string, domain *config.Domain, ipAddr string) {
+func (tr *TrafficRoute) modify(result TrafficRouteRecordsResp, zoneID int, domain *config.Domain, ipAddr string) {
 	util.Log("enter modify")
 	for _, record := range result.Result.Records {
 		// 相同不修改
@@ -258,7 +260,7 @@ func (tr *TrafficRoute) getLine(domain *config.Domain) string {
 
 // List 获得域名记录列表
 // ListZones https://www.volcengine.com/docs/6758/155100
-func (tr *TrafficRoute) listZones(domain *config.Domain) (result TrafficRouteZonesResp, err error) {
+func (tr *TrafficRoute) listZones() (result TrafficRouteZonesResp, err error) {
 	record := TrafficRouteRecord{}
 
 	err = tr.request(
@@ -268,7 +270,7 @@ func (tr *TrafficRoute) listZones(domain *config.Domain) (result TrafficRouteZon
 		&result,
 	)
 
-	return
+	return result, err
 }
 
 // request 统一请求接口
@@ -278,16 +280,26 @@ func (tr *TrafficRoute) request(method string, action string, data interface{}, 
 	if data != nil {
 		jsonStr, _ = json.Marshal(data)
 	}
-	// util.Log("jsonStr:%s", jsonStr)
+	util.Log("jsonStr:%s", jsonStr)
 
-	QueryParam := make(map[string][]string)
-	err = json.Unmarshal(jsonStr, &QueryParam)
-	if err != nil {
-		util.Log("Umarshal failed:%s", err)
-	}
-	util.Log("QueryParam:", QueryParam)
+	var req *http.Request
 	// updateZoneResult, err := requestDNS("POST", map[string][]string{}, map[string]string{}, secretId, secretKey, action, body)
-	req, err := util.TrafficRouteSigner(method, map[string][]string{}, map[string]string{}, tr.DNS.ID, tr.DNS.Secret, action, []byte{})
+	if action != "ListRecords" {
+		req, err = util.TrafficRouteSigner(method, map[string][]string{}, map[string]string{}, tr.DNS.ID, tr.DNS.Secret, action, jsonStr)
+	} else {
+		util.Log("enter ListRecords parse")
+		var QueryParamConv TrafficRouteRecord
+		jsonRes := json.Unmarshal(jsonStr, &QueryParamConv)
+		if jsonRes != nil {
+			util.Log("%v", jsonRes)
+			return
+		}
+		// zoneID := QueryParamConv.ZID
+		QueryParam := map[string][]string{"ZID": []string{"78618"}}
+		util.Log("QueryParam: %s", QueryParam)
+		req, err = util.TrafficRouteSigner(method, QueryParam, map[string]string{}, tr.DNS.ID, tr.DNS.Secret, action, []byte{})
+	}
+
 	if err != nil {
 		return err
 	}
