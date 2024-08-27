@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 )
 
@@ -13,11 +12,11 @@ func GetHTTPResponse(resp *http.Response, err error, result interface{}) error {
 	body, err := GetHTTPResponseOrg(resp, err)
 
 	if err == nil {
+		// log.Println(string(body))
 		if len(body) != 0 {
 			err = json.Unmarshal(body, &result)
 		}
 	}
-	log.Println(string(body))
 
 	return err
 

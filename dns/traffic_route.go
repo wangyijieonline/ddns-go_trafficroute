@@ -29,7 +29,8 @@ type TrafficRouteRecord struct {
 	Host     string `json:"Host"`     // 主机记录，即子域名的域名前缀。
 	TTL      int    `json:"TTL"`      // 解析记录的过期时间。UpdateRecord 可选 TTL
 	Type     string `json:"Type"`     // UpdateRecord 可选 Type
-	Value    string `json:"Value"`    // 解析记录的记录值。UpdateRecord 可选 Value
+	Line     string `json:"Line"`
+	Value    string `json:"Value"` // 解析记录的记录值。UpdateRecord 可选 Value
 }
 
 // TrafficRouteZonesResp TrafficRoute zones返回结果
@@ -107,14 +108,12 @@ func (tr *TrafficRoute) Init(dnsConf *config.DnsConfig, ipv4cache *util.IpCache,
 
 // AddUpdateDomainRecords 添加或更新 IPv4/IPv6 记录
 func (tr *TrafficRoute) AddUpdateDomainRecords() config.Domains {
-	util.Log("enter AddUpdateDomainRecords")
 	tr.addUpdateDomainRecords("A")
 	tr.addUpdateDomainRecords("AAAA")
 	return tr.Domains
 }
 
 func (tr *TrafficRoute) addUpdateDomainRecords(recordType string) {
-	util.Log("enter addUpdateDomainRecords")
 	ipAddr, domains := tr.Domains.GetNewIpResult(recordType)
 
 	if ipAddr == "" {
@@ -122,7 +121,6 @@ func (tr *TrafficRoute) addUpdateDomainRecords(recordType string) {
 	}
 
 	for _, domain := range domains {
-		util.Log("IP: %s, 域名: %s", ipAddr, domain)
 		// 获取域名列表
 		resp, err := tr.listZones()
 
@@ -140,7 +138,7 @@ func (tr *TrafficRoute) addUpdateDomainRecords(recordType string) {
 
 		zoneID := resp.Result.Zones[0].ZID
 
-		var result TrafficRouteRecordsResp
+		var status TrafficRouteRecordsResp
 		record := &TrafficRouteRecord{
 			ZID: zoneID,
 		}
@@ -149,7 +147,7 @@ func (tr *TrafficRoute) addUpdateDomainRecords(recordType string) {
 			"GET",
 			"ListRecords",
 			record,
-			&result,
+			&status,
 		)
 
 		if err != nil {
@@ -158,15 +156,15 @@ func (tr *TrafficRoute) addUpdateDomainRecords(recordType string) {
 			return
 		}
 
-		if result.Result.Records == nil {
-			util.Log("查询域名信息发生异常! %s", result.Resp.Error.Message, ", ")
+		if status.Result.Records == nil {
+			util.Log("查询域名信息发生异常! %s", status.Resp.Error.Message, ", ")
 			domain.UpdateStatus = config.UpdatedFailed
 			return
 		}
 
-		if result.Result.TotalCount > 0 {
+		if status.Result.TotalCount > 0 {
 			// 更新
-			tr.modify(result, zoneID, domain, recordType, ipAddr)
+			tr.modify(status, zoneID, domain, recordType, ipAddr)
 		} else {
 			// 新增
 			tr.create(zoneID, domain, recordType, ipAddr)
@@ -221,6 +219,7 @@ func (tr *TrafficRoute) modify(result TrafficRouteRecordsResp, zoneID int, domai
 		var status TrafficRouteStatus
 		record.Host = domain.GetSubDomain()
 		record.Type = recordType
+		record.Line = "Default"
 		record.Value = ipAddr
 		record.TTL = tr.TTL
 
@@ -291,7 +290,6 @@ func (tr *TrafficRoute) request(method string, action string, data interface{}, 
 		}
 		zoneID := strconv.Itoa(QueryParamConv.ZID)
 		QueryParam := map[string][]string{"ZID": []string{zoneID}}
-		util.Log(" %s", QueryParam)
 		req, err = util.TrafficRouteSigner(method, QueryParam, map[string]string{}, tr.DNS.ID, tr.DNS.Secret, action, []byte{})
 	}
 
